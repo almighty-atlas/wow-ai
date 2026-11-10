@@ -4,6 +4,11 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Added
+
+- Capture backends: `capture.backend` in `config.json` chooses the program that reads the pixel strip. `"auto"` (the default, and what a config without the key gets) keeps today's choice: `capture.ps1` on Windows, `capture_mac.py` on macOS, `capture_x11.py` elsewhere. `"windows"`, `"mac"` and `"x11"` select one explicitly, and `"command"` runs any program (`capture.command`, `capture.args`) that prints the same JSON lines, with the capture settings in `WOW_AI_CAPTURE_*` environment variables. See [docs/CAPTURE.md](docs/CAPTURE.md).
+- A capture program that cannot be started (missing interpreter or command) now logs one message naming the backend, the command and the config key to fix, and restarts back off from 5 s up to 60 s while it keeps dying. A bad `capture` configuration is reported in the banner and the log instead of a restart loop. The bridge asks the capture program to stop when it exits or crashes (not when it is killed by a signal, so a `command` backend should also exit when its stdout closes or its parent is gone). A relative `capture.command` path is taken from the repository folder.
+
 ## [0.5.0] - 2026-11-04
 
 ### Added

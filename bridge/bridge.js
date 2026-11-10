@@ -2,7 +2,7 @@
 'use strict';
 // WoW AI bridge: the half of WoWAI that lives outside the game.
 //
-//   OUT  capture.ps1 screen-captures the addon's pixel strip -> one or more
+//   OUT  a capture program (capture.ps1 on Windows) screen-captures the addon's pixel strip -> one or more
 //        {session, chat, id, cwd, flags, text} records per frame
 //        (fallback: the game's SavedVariables file, written on /reload)
 //   RUN  the chat's agent (Claude Code, Codex or Grok; see agents.js) headless
@@ -26,10 +26,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const { spawn } = require('child_process');
 const P = require('./protocol'); // the pure protocol code, unit-tested in tests/bridge_test.js
 const A = require('./agents');   // how each agent is launched and read, unit-tested in tests/agents_test.js
+const C = require('./capture');  // which capture program runs and how it is supervised, unit-tested in tests/capture_test.js
 
 const HERE = __dirname;
 const CONFIG_FILE = path.join(HERE, 'config.json');
@@ -101,6 +101,7 @@ const INBOX_FILE = cfg.inboxFile && !/WoWClaude/.test(cfg.inboxFile) ? cfg.inbox
 let SAVED_VARS = String(cfg.savedVariablesFile || '').replace(/WoWClaude\.lua$/, 'WoWAI.lua');
 // The client folder holding the AddOns folder.
 const CLIENT_DIR = cfg.addonDir ? path.dirname(path.dirname(cfg.addonDir)) : '';
+const CAPTURE = C.resolveCapture(cap, { platform: process.platform, here: HERE, clientDir: CLIENT_DIR });
 
 // Set up before the first login there was no account folder to point at: the
 // game creates it at login, so keep looking until it shows up.
@@ -730,50 +731,20 @@ function pollSavedVariables() {
   if (job) submit(job);
 }
 
-// Windows: capture.ps1 (GDI). macOS: capture_mac.py (native screencapture). Elsewhere: capture_x11.py (Wine/X11).
-function captureCommand() {
-  if (process.platform === 'win32') {
-    return ['powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(HERE, 'capture.ps1'),
-      '-Cell', String(cap.cellPx), '-Cells', String(cap.cellsPerRow), '-MaxRows', String(cap.maxRows),
-      '-IntervalMs', String(cap.intervalMs), '-ProcessName', cap.processName, '-ClientFolder', path.basename(CLIENT_DIR)]];
-  }
-  if (process.platform === 'darwin') {
-    const args = [path.join(HERE, 'capture_mac.py'),
-      '--cell', String(cap.cellPx), '--cells', String(cap.cellsPerRow), '--max-rows', String(cap.maxRows),
-      '--interval-ms', String(cap.intervalMs), '--process-name', cap.processName];
-    if (cap.windowName) args.push('--window-name', cap.windowName);
-    return [cap.python || 'python3', args];
-  }
-  const args = [path.join(HERE, 'capture_x11.py'),
-    '--cell', String(cap.cellPx), '--cells', String(cap.cellsPerRow), '--max-rows', String(cap.maxRows),
-    '--interval-ms', String(cap.intervalMs), '--process-name', cap.processName];
-  if (cap.windowName) args.push('--window-name', cap.windowName);
-  if (cap.keepComposited) args.push('--keep-composited');
-  return [cap.python || 'python3', args];
-}
-
+// Which capture program runs is bridge/capture.js's call (capture.backend in config.json;
+// the default picks capture.ps1, capture_mac.py or capture_x11.py by platform).
 function startCapture() {
-  const [cmd, args] = captureCommand();
-  const ps = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  const rl = readline.createInterface({ input: ps.stdout });
-  rl.on('line', (line) => {
-    let ev;
-    try { ev = JSON.parse(line); } catch { return; }
-    if (ev.info) { log('capture:', ev.info); return; }
-    if (ev.warn) { log('capture:', ev.warn); return; }
-    if (ev.error) { log('capture error:', ev.error); return; }
-    if (typeof ev.id === 'number') {
+  const sup = C.superviseCapture({
+    resolve: () => CAPTURE,
+    spawn,
+    log,
+    onRecord: (ev) => {
       const jobs = jobsFromStrip(ev.id, ev.text);
       log(`strip #${ev.id}: ${jobs.length} message(s)`);
       for (const job of jobs) submit(job);
-    }
+    },
   });
-  ps.stderr.on('data', (d) => log('capture stderr:', String(d).trim().slice(0, 300)));
-  ps.on('error', (err) => log(`capture could not start (${cmd}): ${err.message}`));
-  ps.on('close', (code) => {
-    log(`capture exited (${code}); restarting in 5 s`);
-    setTimeout(startCapture, 5000);
-  });
+  process.on('exit', () => sup.stop());
 }
 
 function agentLine(id) {
@@ -794,7 +765,7 @@ function banner() {
   }
   console.log(`  addon    : ${addonInstalled() ? 'installed' : 'NOT INSTALLED - run: node setup.js, then restart WoW'}`);
   console.log(`  slots    : ${slotsInstalled() ? SLOTS + ' installed' : 'NOT INSTALLED - run: node setup.js (or node bridge/install-slots.js), then restart WoW'}`);
-  console.log(`  capture  : ${cap.enabled ? 'on (' + cap.processName + ', ' + cap.cellsPerRow + 'x' + cap.maxRows + ' cells of ' + cap.cellPx + 'px)' : 'off'}`);
+  console.log(`  capture  : ${!cap.enabled ? 'off' : CAPTURE.ok ? 'on (' + CAPTURE.label + ', ' + cap.processName + ', ' + cap.cellsPerRow + 'x' + cap.maxRows + ' cells of ' + cap.cellPx + 'px)' : 'NOT STARTED - ' + CAPTURE.error}`);
   console.log(`  parallel : up to ${MAX_PARALLEL} chats at once`);
   console.log(`  fallback : ${SAVED_VARS || 'waiting for the first login'}`);
   console.log(`  agent    : ${DEFAULT_AGENT} (default; chats pick their own with /wow-ai agent)`);

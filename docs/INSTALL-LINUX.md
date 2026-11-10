@@ -34,4 +34,4 @@ It finds the game window, saves what the capture sees to `bridge/probe.png`, and
 3. `nvidia-settings -a AllowFlipping=0` (NVIDIA).
 4. As a last resort `/wow-ai mode reload` in game: no capture at all, one UI reload per message.
 
-`bridge.log` shows `capture: attached to window 0x...` once the window is found. If it keeps saying `waiting for Wow window`, set `capture.processName` to your executable's name, or `capture.windowName` to part of the window title. `capture.python` picks the interpreter if `python3` is not the one on your `PATH`.
+`bridge.log` shows `capture: attached to window 0x...` once the window is found. If it keeps saying `waiting for Wow window`, set `capture.processName` to your executable's name, or `capture.windowName` to part of the window title. Other capture programs can be plugged in with `capture.backend` ([CAPTURE.md](CAPTURE.md)). `capture.python` picks the interpreter if `python3` is not the one on your `PATH`.

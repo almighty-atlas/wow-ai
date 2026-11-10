@@ -51,7 +51,10 @@ Keys under `capture`:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `enabled` | `true` | Run `capture.ps1` (Windows), `capture_mac.py` (macOS) or `capture_x11.py` (Linux). With `false` only the reload path works (`/wow-ai mode reload` in game). |
+| `backend` | `"auto"` | Which capture program runs: `auto` (by platform), `windows`, `mac`, `x11` or `command`. `windows` and `mac` only run on their own OS. See [CAPTURE.md](CAPTURE.md). |
+| `command` | `""` | With `backend: "command"`: the program to run (a path, or a name on `PATH`). Started without a shell. |
+| `args` | `[]` | With `backend: "command"`: its arguments, an array of strings passed verbatim. The settings below reach it as `WOW_AI_CAPTURE_*` environment variables ([CAPTURE.md](CAPTURE.md)). |
+| `enabled` | `true` | Run the capture program chosen by `backend`. With `false` only the reload path works (`/wow-ai mode reload` in game). |
 | `processName` | `"Wow"` | The game executable without `.exe`. `setup.js` sets it from the `Wow*.exe` it finds in the client folder (on macOS, from the binary inside the `.app` bundle). On Windows the capture also skips a game running from a different client folder than `addonDir`, because retail's exe has the same name. |
 | `cellPx` | `4` | Pixel size of one strip cell. Must match `CELL` in `addon/WoWAI/Codec.lua`. |
 | `cellsPerRow` | `200` | Cells per strip row. Must match the addon. |

@@ -14,13 +14,14 @@ bridge/               the companion process (Node.js, no runtime dependencies)
   bridge.js             I/O, processes, publishing
   protocol.js           pure functions: strip records, slot files, folders, dedup
   agents.js             one entry per agent (Claude, Codex, Grok, Antigravity, Hermes): command line, prompt delivery, stream parser
+  capture.js            which capture program runs (capture.backend) and its supervision
   capture.ps1           screen capture and strip decoder (PowerShell)
   install-slots.js      creates the slot addons and signal files
   supervisor.js         restarts bridge.js on crash; the `wow-ai` command
   config.example.json   template setup.js copies to config.json
 setup.js              one-shot installer
 tests/                see below
-docs/                 ARCHITECTURE.md, AGENTS.md, CONFIGURATION.md, INSTALL-WINDOWS.md
+docs/                 ARCHITECTURE.md, AGENTS.md, CAPTURE.md, CONFIGURATION.md, INSTALL-WINDOWS.md
 ```
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. The two transports (pixels out, load-on-demand slots in) follow from three facts about the WoW sandbox, and most design choices make sense only in that light.
@@ -46,6 +47,7 @@ To try changes in the game, run `node setup.js` (it re-copies the addon into `In
 | `node --test tests/addon_test.js` | The real addon in a Lua VM with a stub client (`tests/wow_stub.lua`): login, hello, a message decoded off the strip, a slot reply, Allow, `/wow-ai reset`, restore, chat commands, minimize, reload mode. |
 | `node --test tests/bridge_test.js` | `bridge/protocol.js`: strip records, flags (including `agent=`), the SavedVariables outbox, folder resolution, permission rules, dedup and pruning. |
 | `node --test tests/agents_test.js` | `bridge/agents.js`: the command line built for each agent and permission mode, the prompt delivery (stdin, prompt file, context block), a sample of each CLI's real stream (Claude stream-json, Codex `exec --json`, Grok streaming-json, agy stream-json, Hermes plain text) read back into progress lines, session id, denials and reply, and the unwrapping of npm's Windows launchers. |
+| `node --test tests/capture_test.js` | `bridge/capture.js`: backend selection per platform (the default is the argv the bridge always used), the `command` backend, invalid configs, and the restart/backoff loop with a fake process plus one real spawn. |
 | `node --test tests/restore_test.js` | Slot files are valid Lua and read back field by field, including a restore bundle. |
 | `node --test tests/map_test.js` | The map protocol in `protocol.js`: command validation and sanitizing, versioned application and budgets, ```` ```wowmap ```` blocks and map files, and the `map` table in slot files read back in a Lua VM. |
 | `node --test tests/map_addon_test.js` | The real `Map.lua` (with `WoWAI.lua`) in a Lua VM: sync and versions, pin projection on zone and continent maps, the navigator's yards, bearing and auto-advance, herb/ore nodes filtered by skill, and `/wow-ai map`. |
