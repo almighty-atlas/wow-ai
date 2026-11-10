@@ -1,6 +1,6 @@
 # Agents
 
-The bridge can drive three coding agents: Claude Code, OpenAI Codex and xAI's Grok Build. This page is the reference for each: what to install, how the bridge starts it, what its permission settings mean, and what it cannot do. The code is `bridge/agents.js`, one entry per agent; `bridge.js` only knows the interface (build the arguments, hand over the prompt, read the stream).
+The bridge can drive coding agents (Claude Code, OpenAI Codex, xAI's Grok Build, Antigravity, Hermes) and, chat only, any OpenAI-compatible model server. This page is the reference for each: what to install, how the bridge starts it, what its permission settings mean, and what it cannot do. The code is `bridge/agents.js`, one entry per agent; `bridge.js` only knows the interface (build the arguments, hand over the prompt, read the stream).
 
 ## Choosing one
 
@@ -10,7 +10,7 @@ The bridge can drive three coding agents: Claude Code, OpenAI Codex and xAI's Gr
 - A session belongs to the agent (and the folder) that made it. A chat that changes agent starts a fresh session with the new one; the transcript in the window stays.
 - The bridge's banner lists every agent with the executable it found, or what to install. A chat whose agent is missing gets a reply saying so instead of a hang.
 
-All of them run headless on the bridge PC, so log in once by hand in a terminal there (`claude`, `codex`, `grok login`, `agy`, `hermes setup`); the bridge reuses the cached login.
+All of them run headless on the bridge PC, so log in once by hand in a terminal there (`claude`, `codex`, `grok login`, `agy`, `hermes setup`); the bridge reuses the cached login. The Local LLM agent has no CLI and no login: it needs a reachable server.
 
 ## The shared vocabulary
 
@@ -70,25 +70,53 @@ Codex also checks `CODEX_BIN` before searching `PATH`, so a newer launcher can o
 - **Permissions:** `acceptEdits` is the default. `bypassPermissions` falls back to default; the bridge never passes `--yolo` and appends a note to the reply.
 - **Images and context:** the first image is passed with `--image`; additional paths are included in the prompt. The context block goes at the top of the prompt.
 
+## Local LLM (OpenAI-compatible)
+
+- **What it is:** `bridge/openai_agent.js`, a small script the bridge starts like a CLI. It sends one `POST {baseUrl}/chat/completions` per message to any OpenAI-compatible server (Ollama, LM Studio, llama.cpp `llama-server`, vLLM, ...) and prints the reply. No install on the bridge PC beyond Node, no login.
+- **Chat only.** The model gets no tools: it cannot read or write files, run commands or search the web, so `permissionMode`, `allowedTools` and `deniedTools` do not apply and there is no **Allow** button. The chat's folder is ignored. Map and macro blocks in a reply still work, because the bridge reads them from the text.
+- **Config** (`agents.local` in `bridge/config.json`; every key is in [CONFIGURATION.md](CONFIGURATION.md)). `baseUrl` and `model` are required; until both are set the banner says so and a message to this agent gets a reply explaining it.
+
+  ```json
+  "local": {
+    "baseUrl": "http://<ollama-host>:11434/v1",
+    "model": "<model name from `ollama list`>",
+    "apiKeyEnv": "",
+    "requestTimeoutMs": 300000,
+    "maxHistoryMessages": 40
+  }
+  ```
+
+  Try it without the game: `node bridge/bridge.js --inject "hello" --agent local`, or `/wow-ai agent local` in game.
+- **Ollama:** on the server run `ollama pull <model>` and `ollama serve`. By default Ollama listens on `127.0.0.1` only; for another PC on your network start it with `OLLAMA_HOST=0.0.0.0` (and open port 11434 to that network only: Ollama has no authentication). `baseUrl` is `http://<server>:11434/v1`. **LM Studio** (start its local server; default `http://localhost:1234/v1`), **llama.cpp** (`llama-server`, `http://<host>:8080/v1`) and **vLLM** (`http://<host>:8000/v1`) work the same way; `model` is whatever name the server lists.
+- **Context length:** the system prompt (game context plus the addon primer) is several thousand tokens, plus the conversation. Ollama's default context window is small and silently cuts the start of the prompt, which is where that system prompt sits. Raise it on the server (`OLLAMA_CONTEXT_LENGTH=8192` or more, or `PARAMETER num_ctx` in a Modelfile), or send less: `"primerFile": ""` in `config.json` drops the primer, `maxHistoryMessages` limits the history. A reply that stops early is noted as cut off.
+- **API key:** servers on your own machine need none. For one that does, put the name of an environment variable in `apiKeyEnv` (preferred) or the key in `apiKey` in your untracked `config.json`. It is sent as `Authorization: Bearer <key>`, handed to the script on stdin (never on a command line) and masked in the errors and notes the script prints (a server may echo a key it refused); keys shorter than 12 characters are placeholders such as `ollama` and are not masked, and neither is the model's reply. `baseUrl` is shown in the banner without user info or query.
+- **Sessions:** the server remembers nothing between requests, so the bridge side keeps the conversation: a new UUID per session, stored in `bridge/local-sessions/<id>.json` (gitignored) after each successful reply and resent with the next one, newest `maxHistoryMessages` messages. The system prompt is not stored; the current game context is sent with every request. A session whose file is gone starts fresh and says so. `/wow-ai reset` starts a new conversation; old files are not cleaned up automatically, delete them freely.
+- **Reply:** the text of `choices[0].message.content`, unchanged except that a leading `<think>…</think>` block is removed; `reasoning` fields are ignored. `finish_reason: "length"` adds a note.
+- **Errors** come back as the reply, one clear message each: server unreachable (names `host:port`), no answer within `requestTimeoutMs`, HTTP 401/403 (check the key), 404 or an unknown model (the server's message, plus a pointer to `ollama list` / `ollama pull`), other HTTP errors, a body that is not JSON or has no `choices[0].message.content`, an empty reply. A failed turn is not stored.
+- **Progress:** one line, `asking <model> at <host>...`; the request is not streamed. It goes over Node's plain `http`/`https` rather than `fetch`, whose 300 s wait for response headers would cut off a slow model before `requestTimeoutMs`.
+- **Folder and agent changes:** `/wow-ai cd` to another folder (generic bridge behaviour) starts a new conversation, like changing agent. A relative `sessionsDir` is relative to the `bridge` folder.
+- **Label:** reply bubbles, the banner and bridge messages say "Local LLM".
+
 ## Known limits
 
 - One agent CLI can only be as headless as it is. If an agent hangs waiting for something interactive (a first-run login, an update prompt), the run ends when `timeoutMs` (30 minutes) expires; run the CLI by hand once on the bridge PC to get past it.
 - The **Allow** button needs the agent to report what it refused. Claude always does; Grok marks the refused call `failed` with a "was not executed" line, which the bridge reads; Codex says it in its own words and has no rule to add anyway.
 - The bridge's own transcript (`bridge/transcripts.json`) and the addon's history record which agent wrote each reply, so a restored chat keeps its labels. Chats saved before agents existed show their replies as Claude's.
 - Codex and Grok were tested live against codex 0.156.1 and Grok Build 1.0.41 (the inject test, plus captured streams in `tests/agents_test.js`). Unknown event types are ignored; a stream that ends without a result is reported as an error with the exit code and the tail of stderr.
+- The Local LLM agent was tested against a mock server (`tests/local_agent_test.js`); it has no streaming, tools or image input, and its quality is the model's.
 - Antigravity and Hermes were contributed with captured streams in the tests and a live check by their author on Windows; the maintainer has not run them. Hermes gives no live progress (its reply is read when the process ends) and its permission mode is always the default: the bridge never passes it `--yolo`.
 
 ## Trying one without the game
 
 ```powershell
-npm run test:live -- --agent codex     # or claude, grok
+npm run test:live -- --agent codex     # or claude, grok, agy, hermes
 ```
 
-builds a sandbox with a 5-slot pool and runs the bridge with `--inject`, which pretends the strip said "Reply with exactly the word PONG"; the reply must land in every slot and `Inbox.lua`. `node bridge/bridge.js --inject "hello" --agent grok` does the same against your real config.
+builds a sandbox with a 5-slot pool and runs the bridge with `--inject`, which pretends the strip said "Reply with exactly the word PONG"; the reply must land in every slot and `Inbox.lua`. `node bridge/bridge.js --inject "hello" --agent grok` does the same against your real config. For the Local LLM agent, name the server first: `WOWAI_LOCAL_BASE_URL=http://<host>:11434/v1 WOWAI_LOCAL_MODEL=<model> npm run test:live -- --agent local`.
 
 ## Adding an agent
 
-1. An entry in `AGENTS` in `bridge/agents.js`: `name`, `command`, `install` (one line telling the user what to do), `windowsPaths`/`posixPaths` (where its installer puts it), `npmPackage` if it ships one, `args(…)` (the command line for a run: folder, resume id, permissions, model, system prompt), `input(…)` (the prompt on `stdin` or in a `promptFile`), `env(…)` (the bridge then adds `WOW_AI_MAP_FILE` for the map layers, see [MAP.md](MAP.md)), and a `parser()` whose `feed(event)` returns progress lines, the session id, denied rules, notes and the final `done`. Plain-text CLIs may declare `stream: 'text'` and implement `parser().finish({ stdout, stderr, code })`.
+1. An entry in `AGENTS` in `bridge/agents.js` (an agent that is a script rather than an installed CLI, like `local`, gives `script` instead of `command`/`install`, plus `problem(cfg)` and `describe(cfg)`): `name`, `command`, `install` (one line telling the user what to do), `windowsPaths`/`posixPaths` (where its installer puts it), `npmPackage` if it ships one, `args(…)` (the command line for a run: folder, resume id, permissions, model, system prompt), `input(…)` (the prompt on `stdin` or in a `promptFile`), `env(…)` (the bridge then adds `WOW_AI_MAP_FILE` for the map layers, see [MAP.md](MAP.md)), and a `parser()` whose `feed(event)` returns progress lines, the session id, denied rules, notes and the final `done`. Plain-text CLIs may declare `stream: 'text'` and implement `parser().finish({ stdout, stderr, code })`.
 2. A block under `agents` in `bridge/config.example.json`, and the same keys documented in `docs/CONFIGURATION.md`.
 3. A section on this page, and the id in the README's table and the addon's `AGENT_NAMES` (only for its display name; unknown ids are capitalized).
 4. Tests in `tests/agents_test.js`: the arguments for each permission mode, and a sample of the CLI's real stream through the parser.

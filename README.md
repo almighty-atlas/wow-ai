@@ -37,6 +37,7 @@ The bridge drives whichever of these you have installed; each chat can use a dif
 | **Grok Build** (`grok`) | `grok --prompt-file … --output-format streaming-json`, resumed with `-r` | `permissionMode` + the same `allowedTools` rules, translated to Grok's globs | yes, when Grok reports a refused tool |
 | **Antigravity** (`agy`) | `agy -p=<prompt> --output-format stream-json`, resumed with `--conversation` | Antigravity permission switches | no |
 | **Hermes** (`hermes`) | `hermes chat --query-file -`, resumed with `--resume` | default only; the bridge never uses `--yolo` | no |
+| **Local LLM** (`local`) | `bridge/openai_agent.js`: `POST {baseUrl}/chat/completions` on any OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM) | none: chat only, no tools or files | no |
 
 `agent` in `bridge/config.json` is the default (`claude`). `/wow-ai agent codex` switches the current chat, or right-click a chat in the left panel and pick **Agent...**; the reply bubbles and the game-chat echo are labelled with whoever answered. A session belongs to the agent that made it, so a chat that changes agent starts a fresh session there (its transcript stays). Install notes, the exact command lines, what each permission mode means per agent, and known limits are in [docs/AGENTS.md](docs/AGENTS.md).
 
@@ -51,6 +52,7 @@ The bridge drives whichever of these you have installed; each chat can use a dif
   - [Grok Build](https://docs.x.ai/build/overview): `irm https://x.ai/cli/install.ps1 | iex`, then `grok login`
   - Antigravity (`agy`): install Google's Antigravity CLI, then run `agy` once to log in
   - Hermes Agent (`hermes`): install it, then run `hermes setup` once
+  - Local LLM (`local`): no CLI; point `agents.local` in `bridge/config.json` at an OpenAI-compatible server such as Ollama (see [docs/AGENTS.md](docs/AGENTS.md#local-llm-openai-compatible))
 
 ## Install
 
@@ -139,7 +141,7 @@ Right-clicking a chat in the left panel opens a small menu with **Rename...**, *
 | `/r <text>` | replies to the agent when it was the last to message you; otherwise the normal whisper reply |
 | `/wow-ai new [name]` | new chat = new agent session. Unnamed chats take their title from your first message |
 | `/wow-ai chat <n\|name>` | switch chats (or click the left panel; right-click a row for Rename, Folder and Agent, its trash can deletes it) |
-| `/wow-ai agent [claude\|codex\|grok\|agy\|hermes]` | which agent this chat talks to; no name shows the current one and the bridge's default, `default` goes back to the bridge's. A chat that changes agent starts a fresh session with it |
+| `/wow-ai agent [claude\|codex\|grok\|agy\|hermes\|local]` | which agent this chat talks to; no name shows the current one and the bridge's default, `default` goes back to the bridge's. A chat that changes agent starts a fresh session with it |
 | `/wow-ai cd <folder>` | folder this chat's agent works in (**Folder...** after right-clicking the chat opens the same thing as a dialog). Relative to the bridge's folder (`/wow-ai cd realms`, `/wow-ai cd ../other`), `~` works, a full path too; `/wow-ai cd` alone goes back to the bridge's default. A chat that changes folder starts a fresh session there |
 | `/wow-ai reset` | wipe this chat's agent memory, keep the transcript |
 | `/wow-ai context [on\|off]` | show what the agent is told about your character and location, or turn it on/off |
@@ -211,7 +213,7 @@ The keys you are most likely to touch. Every key, flag and environment variable 
 | Key | Meaning |
 |---|---|
 | `defaultCwd` | folder for chats that haven't been given one with `/wow-ai cd` |
-| `agent` | the agent for chats that haven't picked one with `/wow-ai agent` (`claude`, `codex`, `grok`, `agy` or `hermes`) |
+| `agent` | the agent for chats that haven't picked one with `/wow-ai agent` (`claude`, `codex`, `grok`, `agy`, `hermes` or `local`) |
 | `agents.<id>.permissionMode`, `.allowedTools`, `.deniedTools`, `.model` | that agent's permissions, allowlist, denylist and model; `.path` where its executable is if the bridge can't find it, `.extraArgs` anything else to pass it |
 | `agents.codex.networkAccess` | let Codex's sandbox reach the network (default `false`) |
 | `maxParallel` | how many chats may run an agent at once (default 3) |

@@ -64,6 +64,13 @@
       "permissionMode": "acceptEdits",
       "extraArgs": []
     },
+    "local": {
+      "baseUrl": "",
+      "model": "",
+      "apiKeyEnv": "",
+      "requestTimeoutMs": 300000,
+      "maxHistoryMessages": 40
+    },
     "grok": {
       "path": "",
       "model": "",
