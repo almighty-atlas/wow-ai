@@ -16,6 +16,9 @@
     "cellsPerRow": 200,
     "maxRows": 48,
     "intervalMs": 250,
+    "backend": "auto",
+    "command": "",
+    "args": [],
     "python": "python3",
     "windowName": "",
     "keepComposited": false

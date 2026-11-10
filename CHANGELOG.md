@@ -4,6 +4,12 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Added
+
+- Capture backends: `capture.backend` in `config.json` chooses the program that reads the pixel strip. `"auto"` (the default, and what a config without the key gets) keeps today's choice: `capture.ps1` on Windows, `capture_mac.py` on macOS, `capture_x11.py` elsewhere. `"windows"`, `"mac"` and `"x11"` select one explicitly, and `"command"` runs any program (`capture.command`, `capture.args`) that prints the same JSON lines, with the capture settings in `WOW_AI_CAPTURE_*` environment variables. See [docs/CAPTURE.md](docs/CAPTURE.md).
+- A capture program that cannot be started (missing interpreter or command) now logs one message naming the backend, the command and the config key to fix, and restarts back off from 5 s up to 60 s while it keeps dying. A bad `capture` configuration is reported in the banner and the log instead of a restart loop. The bridge asks the capture program to stop when it exits or crashes (not when it is killed by a signal, so a `command` backend should also exit when its stdout closes or its parent is gone). A relative `capture.command` path is taken from the repository folder.
+- Wayland capture (opt-in with `capture.backend: "wayland"`, untested on a live session): `bridge/capture_wayland.py` asks the xdg-desktop-portal ScreenCast API for the WoW window (a monitor when the portal cannot share windows), reads PipeWire frames with GStreamer and decodes the same pixel strip as the X11 helper, with the same JSON-lines protocol. It keeps a restore token in `$XDG_STATE_HOME/wow-ai/` so the picker is skipped on later starts, searches for a scaled picture (fractional scale, HiDPI) by measuring the cell pitch and for a strip shifted by a title bar or window frame, and names the missing package (Arch/CachyOS and Debian) for each absent dependency. `--probe-portal` and `npm run probe:wayland` check a setup without running the bridge. Documented with a Niri setup and a validation procedure in [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md); `tests/capture_wayland_test.js` covers the decoder and the portal flow with synthetic frames and a fake portal. `auto` still means `x11` on Linux; on a Wayland-only session the bridge logs a one-line suggestion to select `wayland`. A declined portal dialog is reported once and the helper then idles instead of being restarted into asking again.
+
 ## [0.5.0] - 2026-11-04
 
 ### Added

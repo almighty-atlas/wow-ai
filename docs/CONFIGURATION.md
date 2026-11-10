@@ -51,14 +51,17 @@ Keys under `capture`:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `enabled` | `true` | Run `capture.ps1` (Windows), `capture_mac.py` (macOS) or `capture_x11.py` (Linux). With `false` only the reload path works (`/wow-ai mode reload` in game). |
+| `backend` | `"auto"` | Which capture program runs: `auto` (by platform: never `wayland`), `windows`, `mac`, `x11`, `wayland` (portal capture for Wayland sessions, see [INSTALL-LINUX.md](INSTALL-LINUX.md)) or `command`. `windows` and `mac` only run on their own OS, `wayland` on Linux and the BSDs. See [CAPTURE.md](CAPTURE.md). |
+| `command` | `""` | With `backend: "command"`: the program to run (a path, or a name on `PATH`). Started without a shell. |
+| `args` | `[]` | With `backend: "command"`: its arguments, an array of strings passed verbatim. The settings below reach it as `WOW_AI_CAPTURE_*` environment variables ([CAPTURE.md](CAPTURE.md)). |
+| `enabled` | `true` | Run the capture program chosen by `backend`. With `false` only the reload path works (`/wow-ai mode reload` in game). |
 | `processName` | `"Wow"` | The game executable without `.exe`. `setup.js` sets it from the `Wow*.exe` it finds in the client folder (on macOS, from the binary inside the `.app` bundle). On Windows the capture also skips a game running from a different client folder than `addonDir`, because retail's exe has the same name. |
 | `cellPx` | `4` | Pixel size of one strip cell. Must match `CELL` in `addon/WoWAI/Codec.lua`. |
 | `cellsPerRow` | `200` | Cells per strip row. Must match the addon. |
 | `maxRows` | `48` | Maximum strip rows captured. Must match the addon. |
 | `intervalMs` | `250` | Capture period. Lower is more responsive and costs a little more CPU. |
-| `python` | `"python3"` | Linux and macOS: interpreter for `capture_x11.py` / `capture_mac.py`. |
-| `windowName` | `""` | Linux and macOS: find the game window by title substring instead of by process name (on Linux, by WM_CLASS `<processName>.exe`). |
+| `python` | `"python3"` | Linux and macOS: interpreter for `capture_x11.py` / `capture_wayland.py` / `capture_mac.py`. |
+| `windowName` | `""` | Linux and macOS: find the game window by title substring instead of by process name (on Linux, by WM_CLASS `<processName>.exe`). Ignored by `wayland` apart from messages: you pick the window in the portal dialog. |
 | `keepComposited` | `false` | Linux: set `_NET_WM_BYPASS_COMPOSITOR=2` on the game window so the compositor keeps drawing it. Try it if `npm run probe` sees a black or stale strip in borderless fullscreen. |
 
 The capture region is `cellsPerRow × cellPx` by `maxRows × cellPx` pixels (800 × 192 by default) at the top-left of the game's client area.
