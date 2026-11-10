@@ -524,7 +524,7 @@ function runJob(job) {
   const cmd = A.resolveCommand(agentId, acfg);
   if (!cmd.found) {
     log(`${tag} ${agentId} not found: ${cmd.note}`);
-    finish(job, 'error', `${agent.name} is not installed on the bridge PC: ${cmd.note}.`);
+    finish(job, 'error', cmd.message || `${agent.name} is not installed on the bridge PC: ${cmd.note}.`);
     return;
   }
   const skey = sessKey(job);
@@ -780,6 +780,7 @@ function agentLine(id) {
   const acfg = A.agentConfig(cfg, id);
   const cmd = A.resolveCommand(id, acfg);
   if (!cmd.found) return `not found - ${cmd.note}`;
+  if (A.AGENTS[id].describe) return A.AGENTS[id].describe(acfg); // agents without a CLI say what they talk to
   const where = cmd.args.length ? `${cmd.file} ${cmd.args.join(' ')}` : cmd.file;
   const rules = Array.isArray(acfg.allowedTools) ? acfg.allowedTools.length : 0;
   return `${where}  [${acfg.permissionMode || 'acceptEdits'}${id === 'codex' ? '' : ', ' + rules + ' allowed tool rules'}${acfg.model ? ', model ' + acfg.model : ''}]`;

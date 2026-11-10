@@ -108,7 +108,7 @@ end
 -- Agents are named by id as the bridge knows them ("claude", "codex", "grok");
 -- the bridge lists the ones it has, and its default, in every slot file. A chat
 -- with no agent of its own runs on the bridge's default.
-local AGENT_NAMES = { claude = "Claude", codex = "Codex", grok = "Grok", agy = "Antigravity", hermes = "Hermes" }
+local AGENT_NAMES = { claude = "Claude", codex = "Codex", grok = "Grok", agy = "Antigravity", hermes = "Hermes", ["local"] = "Local LLM" }
 
 local function AgentName(id)
 	id = tostring(id or "")
@@ -1468,7 +1468,7 @@ end
 -- "-" / "default") = the bridge's default. The bridge starts a fresh session
 -- when a chat changes agent, since a session belongs to the agent that made it.
 local function AgentList()
-	return run.bridgeAgents and table.concat(run.bridgeAgents, ", ") or "claude, codex, grok, agy, hermes"
+	return run.bridgeAgents and table.concat(run.bridgeAgents, ", ") or "claude, codex, grok, agy, hermes, local"
 end
 
 function WoWAI.SetAgent(rest, c)

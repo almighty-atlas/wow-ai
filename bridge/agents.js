@@ -6,6 +6,8 @@
 //   claude  Claude Code   `claude -p --output-format stream-json`, prompt on stdin
 //   codex   OpenAI Codex  `codex exec --json`, prompt on stdin
 //   grok    xAI Grok      `grok --prompt-file … --output-format streaming-json`
+//   local   Local LLM     bridge/openai_agent.js, a chat-only client for any
+//                         OpenAI-compatible server (Ollama, LM Studio, ...)
 //
 // Everything is pure (no I/O) except resolveCommand, which looks for the
 // executable on disk. Adding an agent: an entry in AGENTS (args, input, parser,
@@ -16,6 +18,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { describeToolUse, ruleFor, baseName } = require('./protocol');
+// Loaded on first use: only the Local LLM entry needs it.
+const openai = { chatCompletionsUrl: (u) => require('./openai_agent').chatCompletionsUrl(u), safeUrl: (u) => require('./openai_agent').safeUrl(u) };
 
 const PROGRESS_CHARS = 140;
 
@@ -313,6 +317,31 @@ function agyParser() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Local LLM (any OpenAI-compatible server)
+// ---------------------------------------------------------------------------
+
+// openai_agent.js prints one JSON line per event; it is the only "CLI" here.
+function localParser() {
+  return {
+    feed(ev) {
+      const out = empty();
+      if (ev.type === 'session' && ev.id) out.session = String(ev.id);
+      else if (ev.type === 'progress' && ev.text) out.progress.push(snippet(ev.text));
+      else if (ev.type === 'note' && ev.text) out.notes.push(String(ev.text));
+      else if (ev.type === 'result') out.done = { text: String(ev.text || ''), error: !!ev.error };
+      return out;
+    },
+  };
+}
+
+// What is wrong with an agents.local block, or '' when it can be used.
+function localProblem(cfg) {
+  if (!cfg.baseUrl || !cfg.model) return 'set agents.local.baseUrl and agents.local.model in config.json';
+  try { openai.chatCompletionsUrl(cfg.baseUrl); } catch (e) { return e.message; }
+  return '';
+}
+
 function hermesParser() {
   return {
     feed() { return empty(); },
@@ -476,6 +505,27 @@ const AGENTS = {
     },
     env: env => env, parser: hermesParser,
   },
+  local: {
+    name: 'Local LLM',
+    install: 'set agents.local.baseUrl and agents.local.model in bridge/config.json, see docs/AGENTS.md',
+    // A script the bridge runs with its own Node, not an installed CLI. It
+    // talks to the server named in config; chat only, so no permission rules.
+    script: path.join(__dirname, 'openai_agent.js'),
+    problem: localProblem,
+    describe: (cfg) => `${openai.safeUrl(openai.chatCompletionsUrl(cfg.baseUrl))}  [model ${cfg.model}, chat only]`,
+    args: () => [],
+    // The API key travels on stdin (or comes from apiKeyEnv in the environment), never in argv.
+    input: ({ prompt, system, resume, cfg }) => ({
+      stdin: JSON.stringify({
+        prompt, system, resume,
+        baseUrl: cfg.baseUrl, model: cfg.model, apiKey: cfg.apiKey, apiKeyEnv: cfg.apiKeyEnv,
+        requestTimeoutMs: cfg.requestTimeoutMs, maxHistoryMessages: cfg.maxHistoryMessages,
+        extraBody: cfg.extraBody, headers: cfg.headers, sessionsDir: cfg.sessionsDir,
+      }),
+    }),
+    env: env => env,
+    parser: localParser,
+  },
 };
 
 const DEFAULT_AGENT = 'claude';
@@ -567,6 +617,10 @@ function nativeNextTo(script, agent) {
 function resolveCommand(id, cfg = {}) {
   const A = AGENTS[id];
   if (!A) return { file: id, args: [], found: false, note: `unknown agent "${id}"` };
+  if (A.script) {
+    const note = A.problem(cfg) || (exists(A.script) ? '' : `${A.script} is missing`);
+    return { file: process.execPath, args: [A.script], found: !note, note, message: note ? `${A.name} is not configured: ${note}.` : '' };
+  }
   if (cfg.path) {
     if (/\.(cmd|bat)$/i.test(cfg.path)) {
       const r = unwrapShim(cfg.path, A);
@@ -600,6 +654,6 @@ function resolveCommand(id, cfg = {}) {
 module.exports = {
   AGENTS, DEFAULT_AGENT, agentIds, normalizeAgent, displayName, agentConfig,
   grokRules, snippet, contextBlock,
-  claudeParser, codexParser, grokParser, agyParser, hermesParser, codexItemLine, grokCall, grokRefusal, shellInner,
+  claudeParser, codexParser, grokParser, agyParser, hermesParser, localParser, codexItemLine, grokCall, grokRefusal, shellInner,
   resolveCommand, unwrapShim, nativeNextTo,
 };

@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Added
+
+- **Local LLM** (`local`): a chat-only agent for any OpenAI-compatible `POST {baseUrl}/chat/completions` endpoint (Ollama, LM Studio, llama.cpp server, vLLM, ...), non-streaming, no tools. `/wow-ai agent local` after setting `agents.local.baseUrl` and `agents.local.model`. `bridge/openai_agent.js` is the client the bridge spawns; the conversation is kept on the bridge PC in `bridge/local-sessions/` and resent with each request, with the game context as the system prompt every time. Keys: `apiKey` / `apiKeyEnv`, `requestTimeoutMs`, `maxHistoryMessages`, `extraBody`, `headers`. See [docs/AGENTS.md](docs/AGENTS.md).
+
 ## [0.5.0] - 2026-11-04
 
 ### Added

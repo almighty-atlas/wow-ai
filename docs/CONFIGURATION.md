@@ -17,7 +17,7 @@ The bridge reads `config.json` once at start. Restart it after editing, except f
 
 | Key | Default | Meaning |
 |---|---|---|
-| `agent` | `"claude"` | The agent for chats that have not picked one with `/wow-ai agent`. One of `claude`, `codex`, `grok`, `agy`, `hermes`; the bridge refuses to start on anything else. |
+| `agent` | `"claude"` | The agent for chats that have not picked one with `/wow-ai agent`. One of `claude`, `codex`, `grok`, `agy`, `hermes`, `local`; the bridge refuses to start on anything else. |
 | `agents.<id>` | one block per agent | That agent's settings, below. A missing block means the defaults. |
 
 Keys under `agents.claude`, `agents.codex`, `agents.grok`, `agents.agy` and `agents.hermes` (what each one means per agent is spelled out in [AGENTS.md](AGENTS.md)):
@@ -31,6 +31,20 @@ Keys under `agents.claude`, `agents.codex`, `agents.grok`, `agents.agy` and `age
 | `path` | `""` | Full path to the executable. Empty means: look in the installer's folder, then (for Codex) `CODEX_BIN`, then `PATH`, then npm's launcher. A `.js` path is run with the bridge's Node. |
 | `extraArgs` | `[]` | More command-line arguments, added verbatim (before Codex's `resume` subcommand). |
 | `networkAccess` (codex only) | `false` | `true` lets commands inside Codex's `workspace-write` sandbox reach the network (`-c sandbox_workspace_write.network_access=true`). |
+
+Keys under `agents.local`, the chat-only client for OpenAI-compatible servers (none of the keys above apply to it; setup is in [AGENTS.md](AGENTS.md#local-llm-openai-compatible)):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `baseUrl` | `""` (required) | The server's API root, e.g. `http://<ollama-host>:11434/v1`. With or without a trailing `/`; a URL already ending in `/chat/completions` is accepted. User info and query in it are dropped. |
+| `model` | `""` (required) | The model name the server knows (`ollama list`). |
+| `apiKeyEnv` | `""` | Name of an environment variable holding the API key. Preferred over `apiKey`, and wins when both are set. |
+| `apiKey` | `""` | The key itself, only in your untracked `config.json`. Sent as `Authorization: Bearer <key>` when non-empty; never on a command line, never logged. |
+| `requestTimeoutMs` | `300000` | How long one request may take (at most 2147483647; anything else falls back to the default). The bridge-wide `timeoutMs` still kills the process. |
+| `maxHistoryMessages` | `40` | Messages (user and assistant) kept per conversation and sent with each request; the oldest pairs are dropped first. |
+| `extraBody` | `{}` | Merged into the request body (`temperature`, `max_tokens`, `options`...). Cannot replace `model`, `messages` or `stream`. |
+| `headers` | `{}` | Extra HTTP headers. Never logged; values of headers named like `*auth*`, `*key*`, `*token*`, `*secret*` or `*cookie*` are masked in error messages. |
+| `sessionsDir` | `bridge/local-sessions` | Where conversations are stored, one `<session id>.json` each. A relative path is relative to the `bridge` folder. |
 
 A `config.json` from before agents existed kept Claude's settings at the top level (`claudePath`, `model`, `permissionMode`, `allowedTools`). The bridge still reads them, under anything in `agents.claude`; `setup.js` moves them down.
 
