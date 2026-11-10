@@ -1,6 +1,7 @@
 // Round-trip test: the addon's real Codec.lua (run in a Lua VM) -> PNG -> the capture decoders.
-// capture.ps1 on Windows; elsewhere both Python decoders (capture_x11.py for Linux,
-// capture_mac.py for macOS: their --test-image mode needs only the stdlib). Simulates game
+// capture.ps1 on Windows; elsewhere the Python decoders (capture_x11.py for Linux/X11,
+// capture_wayland.py for Linux/Wayland, capture_mac.py for macOS: their --test-image mode
+// needs only the stdlib). Simulates game
 // rendering with noise and gamma.
 'use strict';
 const fengari = require('fengari');
@@ -18,6 +19,7 @@ const CODEC = path.join(__dirname, '..', 'addon', 'WoWAI', 'Codec.lua');
 const CAPTURE = path.join(__dirname, '..', 'bridge', 'capture.ps1');
 const CAPTURE_X11 = path.join(__dirname, '..', 'bridge', 'capture_x11.py');
 const CAPTURE_MAC = path.join(__dirname, '..', 'bridge', 'capture_mac.py');
+const CAPTURE_WAYLAND = path.join(__dirname, '..', 'bridge', 'capture_wayland.py');
 const TMP = path.join(__dirname, 'tmp');
 const CELL = 4, CELLS = 200, MAXROWS = 48;
 fs.mkdirSync(TMP, { recursive: true });
@@ -85,7 +87,7 @@ function decode(file) {
   if (process.platform === 'win32') {
     return [['capture.ps1', last(execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', CAPTURE, '-TestImage', file], { encoding: 'utf8' }))]];
   }
-  return [['capture_x11.py', CAPTURE_X11], ['capture_mac.py', CAPTURE_MAC]]
+  return [['capture_x11.py', CAPTURE_X11], ['capture_wayland.py', CAPTURE_WAYLAND], ['capture_mac.py', CAPTURE_MAC]]
     .map(([name, script]) => [name, last(execFileSync('python3', [script, '--test-image', file], { encoding: 'utf8' }))]);
 }
 

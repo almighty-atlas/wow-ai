@@ -66,6 +66,17 @@ const BACKENDS = {
       return { file: cap.python || 'python3', args, hint: PYTHON_HINT };
     },
   },
+  // Wayland has no screen to read: capture_wayland.py asks the desktop's ScreenCast portal for the
+  // game window (see docs/INSTALL-LINUX.md). Opt-in; "auto" never picks it.
+  wayland: {
+    id: 'wayland',
+    platforms: ['linux', 'freebsd', 'openbsd', 'netbsd'],
+    build: (cap, ctx) => ({
+      file: cap.python || 'python3',
+      args: pythonArgs(path.join(ctx.here, 'capture_wayland.py'), cap),
+      hint: PYTHON_HINT,
+    }),
+  },
   command: {
     id: 'command',
     platforms: null,
@@ -102,6 +113,16 @@ function autoBackend(platform) {
   if (platform === 'win32') return 'windows';
   if (platform === 'darwin') return 'mac';
   return 'x11';
+}
+
+// "auto" stays on x11, but on a Wayland-only session that is almost certainly not what works:
+// a one-line suggestion for the log, never a silent switch. '' when it does not apply.
+function waylandHint(resolved, { platform = process.platform, env = process.env } = {}) {
+  if (!resolved || !resolved.ok || !resolved.auto || resolved.id !== 'x11' || platform !== 'linux') return '';
+  const wayland = env.XDG_SESSION_TYPE === 'wayland' || !!env.WAYLAND_DISPLAY;
+  if (!wayland || env.DISPLAY) return '';
+  return 'this looks like a Wayland session without an X display, where the x11 capture finds nothing; ' +
+    'set "capture": { "backend": "wayland" } in config.json to use the portal capture (docs/INSTALL-LINUX.md)';
 }
 
 // -> { ok: true, id, auto, file, args, env, hint, label } | { ok: false, error }
@@ -203,4 +224,4 @@ function superviseCapture({
   };
 }
 
-module.exports = { BACKENDS, ENV_NAMES, backendIds, autoBackend, resolveCapture, superviseCapture };
+module.exports = { BACKENDS, ENV_NAMES, backendIds, autoBackend, resolveCapture, waylandHint, superviseCapture };

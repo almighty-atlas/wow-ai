@@ -83,6 +83,45 @@ test('windows and mac refuse other platforms; x11 and command run anywhere', () 
   assert.equal(resolve({ backend: 'command', command: 'tool' }, 'win32').ok, true);
 });
 
+test('the wayland backend: opt-in, the same argv as x11 with its own script', () => {
+  const r = resolve({ backend: 'wayland', windowName: 'World of Warcraft', python: 'python3.12', keepComposited: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.id, 'wayland');
+  assert.equal(r.auto, false);
+  assert.equal(r.label, 'wayland');
+  assert.equal(r.file, 'python3.12');
+  assert.deepEqual(r.args, [path.join(HERE, 'capture_wayland.py'), '--cell', '4', '--cells', '200', '--max-rows', '48',
+    '--interval-ms', '250', '--process-name', 'Wow', '--window-name', 'World of Warcraft']);
+  assert.deepEqual(r.env, {});
+  assert.deepEqual(resolve({ backend: ' Wayland ' }).args, resolve({ backend: 'wayland' }).args);
+  assert.deepEqual(resolve({ backend: 'wayland' }).args.slice(1), oldCaptureCommand(DEFAULTS, 'linux')[1].slice(1));
+  assert.equal(resolve({ backend: 'wayland' }).file, 'python3');
+  for (const platform of ['freebsd', 'openbsd']) assert.equal(resolve({ backend: 'wayland' }, platform).ok, true);
+});
+
+test('the wayland backend refuses Windows and macOS', () => {
+  for (const platform of ['win32', 'darwin']) {
+    const r = resolve({ backend: 'wayland' }, platform);
+    assert.equal(r.ok, false);
+    assert.match(r.error, new RegExp(`"capture\\.backend": "wayland" only runs on linux/freebsd/openbsd/netbsd, this is ${platform}`));
+  }
+});
+
+test('auto stays on x11 on Linux even in a Wayland session, and only suggests wayland', () => {
+  const sessions = [{ WAYLAND_DISPLAY: 'wayland-1' }, { XDG_SESSION_TYPE: 'wayland' }, { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', DISPLAY: ':0' }];
+  const hint = env => C.waylandHint(resolve({}), { platform: 'linux', env });
+  for (const env of sessions) assert.equal(resolve({}).id, 'x11'); // selection never looks at the environment
+  assert.match(hint(sessions[0]), /Wayland session without an X display.*"backend": "wayland"/);
+  assert.match(hint(sessions[1]), /"backend": "wayland"/);
+  assert.equal(hint(sessions[2]), '');                       // an X display exists (XWayland): x11 may work
+  assert.equal(hint({ DISPLAY: ':0', XDG_SESSION_TYPE: 'x11' }), '');
+  assert.equal(hint({}), '');
+  assert.equal(C.waylandHint(resolve({ backend: 'x11' }), { platform: 'linux', env: sessions[0] }), ''); // explicit choice: no nagging
+  assert.equal(C.waylandHint(resolve({ backend: 'wayland' }), { platform: 'linux', env: sessions[0] }), '');
+  assert.equal(C.waylandHint(resolve({}, 'darwin'), { platform: 'darwin', env: sessions[0] }), '');
+  assert.equal(C.waylandHint({ ok: false, error: 'x' }, { platform: 'linux', env: sessions[0] }), '');
+});
+
 test('the command backend: verbatim argv, settings in the environment, no shell', () => {
   const r = resolve({ backend: 'command', command: 'my-capture', args: ['--flag', 'a b', '$HOME', ''], windowName: 'Game' });
   assert.equal(r.ok, true);
@@ -113,8 +152,8 @@ test('a relative command path is taken from the repo, bare names and absolute pa
 
 test('bad configurations name the key and list the valid backends', () => {
   const bad = [
-    [{ backend: 'wayland' }, /unknown "capture\.backend" "wayland".*auto, windows, mac, x11, command/],
-    [{ backend: 7 }, /"capture\.backend" must be a string.*auto, windows, mac, x11, command/],
+    [{ backend: 'sway' }, /unknown "capture\.backend" "sway".*auto, windows, mac, x11, wayland, command/],
+    [{ backend: 7 }, /"capture\.backend" must be a string.*auto, windows, mac, x11, wayland, command/],
     [{ backend: 'toString' }, /unknown "capture\.backend"/],
     [{ backend: 'command' }, /"capture\.command"/],
     [{ backend: 'command', command: '  ' }, /"capture\.command"/],
@@ -298,4 +337,69 @@ test('a real command backend: env arrives and its lines are parsed', { timeout: 
   sup.stop();
   assert.deepEqual(records, [{ id: 3, text: 'hello' }]);
   assert.ok(logs.includes('capture: cell=4 cells=200 rows=48 interval=250 process=Wow window=Game client=_forever_'), logs.join('\n'));
+});
+
+// The real Wayland helper under the real supervisor: the JSON lines reach the bridge's handlers.
+// --fake-portal / --exit-delay are appended to the argv the backend built (the config has no
+// such keys); WOWAI_WAYLAND_TEST_MISSING forces the missing-dependency path.
+function runWayland({ extraArgs, env = {}, until }) {
+  const r = C.resolveCapture({ ...DEFAULTS, backend: 'wayland' }, { platform: 'linux', here: path.join(__dirname, '..', 'bridge'), clientDir: CLIENT });
+  const records = [];
+  const logs = [];
+  const timers = [];
+  const sup = C.superviseCapture({
+    resolve: () => ({ ...r, args: [...r.args, ...extraArgs] }),
+    spawn,
+    log: (...p) => logs.push(p.join(' ')),
+    onRecord: ev => records.push(ev),
+    setTimeout: (fn, ms) => { timers.push(ms); return {}; },
+    baseEnv: { ...process.env, ...env },
+    now: Date.now,
+  });
+  return new Promise(res => {
+    const t = setInterval(() => {
+      if (logs.some(l => until.test(l))) { clearInterval(t); sup.stop(); res({ records, logs, timers }); }
+    }, 10);
+  });
+}
+const hasPython3 = !require('child_process').spawnSync('python3', ['--version']).error;
+
+test('a real wayland helper: decoded strips arrive through the supervisor, then the closed session restarts it', { timeout: 30000, skip: !hasPython3 && 'python3 is required' }, async () => {
+  const fs = require('fs'), os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wowai-wl-'));
+  const H = (a, b) => Buffer.from([a, b]);
+  // a one-row strip drawn by hand: magic C7 1A, id 9, length 2, "hi", checksum
+  const bytes = [0xC7, 0x1A, 0, 9, 0, 2, 0x68, 0x69];
+  let s1 = 0, s2 = 0;
+  for (const b of bytes.slice(2)) { s1 = (s1 + b) % 255; s2 = (s2 + s1) % 255; }
+  bytes.push(s1, s2);
+  const bits = bytes.map(b => b.toString(2).padStart(8, '0')).join('').padEnd(Math.ceil(bytes.length * 8 / 3) * 3, '0');
+  const cells = bits.match(/.../g).map(c => parseInt(c, 2));
+  const W = 800, Hh = 192, rgb = Buffer.alloc(W * Hh * 3, 0x30);
+  cells.forEach((v, i) => {
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+      const o = (y * W + i * 4 + x) * 3;
+      rgb[o] = (v >> 2 & 1) * 255; rgb[o + 1] = (v >> 1 & 1) * 255; rgb[o + 2] = (v & 1) * 255;
+    }
+  });
+  const raw = path.join(dir, 'frame.rgb');
+  fs.writeFileSync(raw, rgb);
+  const sc = path.join(dir, 'sc.json');
+  fs.writeFileSync(sc, JSON.stringify({ version: 5, source_types: 3, cursor_modes: 7, after: 'closed',
+    streams: [{ node: 3, size: [800, 192], source_type: 2 }], frames: [{ raw, width: W, height: Hh, format: 'RGB' }] }));
+  const out = await runWayland({ extraArgs: ['--fake-portal', sc, '--exit-delay', '0', '--interval-ms', '10', '--token-file', path.join(dir, 'tok')], until: /capture exited/ });
+  assert.deepEqual(out.records, [{ id: 9, text: 'hi' }]);
+  assert.ok(out.logs.some(l => /^capture: attached to Wayland window cast \(800x192, PipeWire node 3\)$/.test(l)), out.logs.join('\n'));
+  assert.ok(out.logs.some(l => /capture exited \(6\); restarting in 5 s/.test(l)), out.logs.join('\n'));
+  assert.deepEqual(out.timers, [5000]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a real wayland helper with a missing dependency: one error line, exit 3, backoff keeps growing', { timeout: 30000, skip: !hasPython3 && 'python3 is required' }, async () => {
+  const out = await runWayland({ extraArgs: ['--exit-delay', '0'], env: { WOWAI_WAYLAND_TEST_MISSING: 'gi' }, until: /capture exited/ });
+  assert.deepEqual(out.records, []);
+  const errors = out.logs.filter(l => /^capture error:/.test(l));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /pacman -S python-gobject.*apt install python3-gi/);
+  assert.match(out.logs.at(-1), /capture exited \(3\)/);
 });

@@ -1,6 +1,6 @@
 # Capture backends
 
-The addon draws a strip of colored squares in the top-left corner of the game window, and something on the bridge PC has to read those pixels back. That something is a *capture backend*: a program the bridge starts, that prints what it decodes as JSON lines. The bridge ships three and can run any other that follows the contract below. Pixels out of the game are described in [ARCHITECTURE.md](ARCHITECTURE.md) ("Outbound"); this page is about the program that reads them.
+The addon draws a strip of colored squares in the top-left corner of the game window, and something on the bridge PC has to read those pixels back. That something is a *capture backend*: a program the bridge starts, that prints what it decodes as JSON lines. The bridge ships four and can run any other that follows the contract below. Pixels out of the game are described in [ARCHITECTURE.md](ARCHITECTURE.md) ("Outbound"); this page is about the program that reads them.
 
 ## Choosing a backend
 
@@ -12,9 +12,12 @@ The addon draws a strip of colored squares in the top-left corner of the game wi
 | `"windows"` | `bridge/capture.ps1` (GDI) | Windows only |
 | `"mac"` | `bridge/capture_mac.py` (`screencapture`) | macOS only |
 | `"x11"` | `bridge/capture_x11.py` (libX11 through ctypes) | any; needs an X display |
+| `"wayland"` | `bridge/capture_wayland.py` (xdg-desktop-portal ScreenCast + PipeWire + GStreamer; see [INSTALL-LINUX.md](INSTALL-LINUX.md#wayland-niri-gnome-kde--via-xdg-desktop-portal)) | Linux and the BSDs; opt-in, `auto` never picks it |
 | `"command"` | your program: `capture.command` with `capture.args` | any |
 
-`windows` and `mac` need OS facilities that exist nowhere else, so choosing them on another platform is a configuration error: the bridge logs it, runs without capture (the SavedVariables `/reload` path keeps working) and the banner says `capture  : NOT STARTED - ...`. An unknown name, a `command` backend without `capture.command`, or `capture.args` that is not an array of strings is treated the same way. Fix `config.json` and restart the bridge.
+`windows`, `mac` and `wayland` need OS facilities that exist only on their own platforms, so choosing them elsewhere is a configuration error: the bridge logs it, runs without capture (the SavedVariables `/reload` path keeps working) and the banner says `capture  : NOT STARTED - ...`. An unknown name, a `command` backend without `capture.command`, or `capture.args` that is not an array of strings is treated the same way. Fix `config.json` and restart the bridge.
+
+`wayland` takes the same settings as `x11` (`python`, `processName`, `windowName`, the strip geometry and `intervalMs`) and adds no keys of its own: the compositor's dialog, not the config, chooses the window. On a Wayland-only session with `auto`, the bridge logs a hint to set `"backend": "wayland"` and keeps running `x11`. A helper that cannot do anything useful (missing packages, no portal) should exit quickly, below the 30 s that count as a healthy run, so the restart backoff keeps growing; one that was declined by the user should say so once and stay idle instead of being restarted into asking again (`capture_wayland.py` does both).
 
 The `capture :` line of the banner shows what runs, e.g. `on (x11 auto, Wow, 200x48 cells of 4px)`; `auto` is appended when the backend was picked by platform.
 

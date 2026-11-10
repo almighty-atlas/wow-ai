@@ -734,6 +734,8 @@ function pollSavedVariables() {
 // Which capture program runs is bridge/capture.js's call (capture.backend in config.json;
 // the default picks capture.ps1, capture_mac.py or capture_x11.py by platform).
 function startCapture() {
+  const suggestion = C.waylandHint(CAPTURE);
+  if (suggestion) log(`capture: ${suggestion}`);
   const sup = C.superviseCapture({
     resolve: () => CAPTURE,
     spawn,
